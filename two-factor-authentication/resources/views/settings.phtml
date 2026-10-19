@@ -1,0 +1,58 @@
+<?php
+
+use Fisharebest\Webtrees\I18N;
+
+/**
+ * @var string $title
+ * @var bool   $enabled
+ * @var string $qr          Data URI of the QR code (only when not yet enabled)
+ * @var string $secret      Pending secret (only when not yet enabled)
+ * @var string $action_url
+ */
+
+?>
+
+<h2 class="wt-page-title"><?= e($title) ?></h2>
+
+<div class="wt-page-content" style="max-width: 34rem;">
+    <form method="post" action="<?= e($action_url) ?>">
+        <?= csrf_field() ?>
+
+        <?php if ($enabled) : ?>
+            <p><?= I18N::translate('Two-factor authentication is currently <strong>enabled</strong> on your account.') ?></p>
+            <p><?= I18N::translate('To disable it, enter a current code from your authenticator app.') ?></p>
+
+            <input type="hidden" name="task" value="disable">
+
+            <div class="mb-3">
+                <label class="form-label" for="otp"><?= I18N::translate('Authentication code') ?></label>
+                <input type="text" class="form-control" id="otp" name="otp" inputmode="numeric"
+                       autocomplete="one-time-code" maxlength="10" required>
+            </div>
+
+            <button type="submit" class="btn btn-danger"><?= I18N::translate('Disable two-factor authentication') ?></button>
+        <?php else : ?>
+            <p><?= I18N::translate('Scan this QR code with Google Authenticator (or a compatible app), then enter the 6-digit code it shows to confirm.') ?></p>
+
+            <p class="text-center">
+                <img src="<?= e($qr) ?>" alt="<?= I18N::translate('QR code') ?>" width="220" height="220">
+            </p>
+
+            <p>
+                <?= I18N::translate('Can’t scan? Enter this key manually:') ?>
+                <code><?= e($secret) ?></code>
+            </p>
+
+            <input type="hidden" name="task" value="enable">
+
+            <div class="mb-3">
+                <label class="form-label" for="otp"><?= I18N::translate('Authentication code') ?></label>
+                <input type="text" class="form-control" id="otp" name="otp" inputmode="numeric"
+                       autocomplete="one-time-code" maxlength="10" required>
+            </div>
+
+            <button type="submit" class="btn btn-primary"><?= I18N::translate('Enable two-factor authentication') ?></button>
+        <?php endif ?>
+    </form>
+</div>
+

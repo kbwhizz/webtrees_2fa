@@ -1,0 +1,10 @@
+{
+    "name": "my2fa/two-factor-authentication",
+    "description": "2FA Module for webtrees",
+    "type": "webtrees-module",
+    "require": {
+        "pragmarx/google2fa": "^8.0",
+        "chillerlan/php-qrcode": "4.4.0"
+    }
+}
+
