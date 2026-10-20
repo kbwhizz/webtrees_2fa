@@ -55,6 +55,10 @@ class TwoFactorAuthentication extends AbstractModule implements
     private const PREF_SECRET  = 'two_factor_secret';
     private const PREF_LAST    = 'two_factor_last_timestamp';
     private const SESSION_KEY  = 'two_factor_pending_secret';
+    private const PREF_FAILURES     = 'two_factor_failures';
+    private const PREF_LOCKED_UNTIL = 'two_factor_locked_until';
+    private const MAX_FAILURES      = 5;   // wrong codes allowed before locking
+    private const LOCK_SECONDS      = 300; // length of the lock    
 
     public function title(): string
     {
@@ -210,22 +214,32 @@ JS;
         if ($user === null || !$this->twoFactorEnabled($user) || !$user->checkPassword($password)) {
             return null;
         }
+        // Locked out after too many wrong codes: refuse without even checking this one.
+        $wait = $this->lockSecondsRemaining($user);
+
+        if ($wait > 0) {
+            FlashMessages::addMessage($this->lockMessage($wait), 'danger');
+
+            return Registry::responseFactory()->redirectUrl(route(LoginPage::class, ['url' => $url]));
+        }
 
         $secret = $user->getPreference(self::PREF_SECRET);
         $last   = (int) $user->getPreference(self::PREF_LAST, '0');
         $result = false;
 
         if ($otp !== '') {
-            // Window of 1 = accept the previous/current/next 30-second code.
-            // verifyKeyNewer also rejects re-use of an already-accepted code.
             $result = (new Google2FA())->verifyKeyNewer($secret, $otp, $last, 1);
         }
 
         if ($result === false) {
+            $this->recordFailure($user);
+
             FlashMessages::addMessage(I18N::translate('The authentication code is missing or incorrect.'), 'danger');
 
             return Registry::responseFactory()->redirectUrl(route(LoginPage::class, ['url' => $url]));
         }
+
+        $this->clearFailures($user);
 
         if (is_int($result)) {
             $user->setPreference(self::PREF_LAST, (string) $result);
@@ -312,18 +326,26 @@ JS;
             } else {
                 FlashMessages::addMessage(I18N::translate('That code was not correct. Please try again.'), 'danger');
             }
-        } elseif ($task === 'disable' && $this->twoFactorEnabled($user)) {
-            $secret = $user->getPreference(self::PREF_SECRET);
+       } elseif ($task === 'disable' && $this->twoFactorEnabled($user)) {
+            $wait = $this->lockSecondsRemaining($user);
 
-            if ($otp !== '' && $g2fa->verifyKey($secret, $otp, 1)) {
-                $user->setPreference(self::PREF_ENABLED, '0');
-                $user->setPreference(self::PREF_SECRET, '');
-                $user->setPreference(self::PREF_LAST, '0');
-                FlashMessages::addMessage(I18N::translate('Two-factor authentication has been disabled.'), 'success');
+            if ($wait > 0) {
+                FlashMessages::addMessage($this->lockMessage($wait), 'danger');
             } else {
-                FlashMessages::addMessage(I18N::translate('That code was not correct. Please try again.'), 'danger');
+                $secret = $user->getPreference(self::PREF_SECRET);
+
+                if ($otp !== '' && $g2fa->verifyKey($secret, $otp, 1)) {
+                    $user->setPreference(self::PREF_ENABLED, '0');
+                    $user->setPreference(self::PREF_SECRET, '');
+                    $user->setPreference(self::PREF_LAST, '0');
+                    $this->clearFailures($user);
+                    FlashMessages::addMessage(I18N::translate('Two-factor authentication has been disabled.'), 'success');
+                } else {
+                    $this->recordFailure($user);
+                    FlashMessages::addMessage(I18N::translate('That code was not correct. Please try again.'), 'danger');
+                }
             }
-        }
+       }
 
         return Registry::responseFactory()->redirectUrl($this->settingsUrl());
     }
@@ -345,5 +367,42 @@ JS;
         return $user->getPreference(self::PREF_ENABLED) === '1'
             && $user->getPreference(self::PREF_SECRET) !== '';
     }
+    /**
+     * Seconds remaining on a lock, or 0 if not locked.
+     */
+    private function lockSecondsRemaining($user): int
+    {
+        return max(0, (int) $user->getPreference(self::PREF_LOCKED_UNTIL, '0') - time());
+    }
+
+    private function recordFailure($user): void
+    {
+        $failures = (int) $user->getPreference(self::PREF_FAILURES, '0') + 1;
+
+        if ($failures >= self::MAX_FAILURES) {
+            $user->setPreference(self::PREF_LOCKED_UNTIL, (string) (time() + self::LOCK_SECONDS));
+            $failures = 0;
+        }
+
+        $user->setPreference(self::PREF_FAILURES, (string) $failures);
+    }
+
+    private function clearFailures($user): void
+    {
+        $user->setPreference(self::PREF_FAILURES, '0');
+        $user->setPreference(self::PREF_LOCKED_UNTIL, '0');
+    }
+
+    private function lockMessage(int $seconds): string
+    {
+        $minutes = (int) ceil($seconds / 60);
+
+        return I18N::plural(
+            'Too many incorrect codes. Please try again in %s minute.',
+            'Too many incorrect codes. Please try again in %s minutes.',
+            $minutes,
+            I18N::number($minutes)
+        );
+    }    
 }
 
