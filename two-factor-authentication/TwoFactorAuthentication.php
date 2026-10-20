@@ -32,6 +32,7 @@ use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Fisharebest\Webtrees\Services\TreeService;
 use Fisharebest\Webtrees\Site;
+use Fisharebest\Webtrees\Contracts\UserInterface;
 
 /**
  * Optional Google Authenticator (TOTP) two-factor login for webtrees 2.2.
@@ -133,8 +134,8 @@ class TwoFactorAuthentication extends AbstractModule implements
         }
 
         $flags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
-        $label = json_encode(I18N::translate('Authentication code'), $flags);
-        $help  = json_encode(I18N::translate('Only needed if you have enabled two-factor authentication.'), $flags);
+        $label = json_encode(I18N::translate('Authentication code'), $flags) ?: '""';
+        $help  = json_encode(I18N::translate('Only needed if you have enabled two-factor authentication.'), $flags) ?: '""';
 
         $js = <<<'JS'
 (function () {
@@ -362,7 +363,7 @@ JS;
     /**
      * @param \Fisharebest\Webtrees\Contracts\UserInterface $user
      */
-    private function twoFactorEnabled($user): bool
+    private function twoFactorEnabled(UserInterface $user): bool
     {
         return $user->getPreference(self::PREF_ENABLED) === '1'
             && $user->getPreference(self::PREF_SECRET) !== '';
@@ -370,12 +371,12 @@ JS;
     /**
      * Seconds remaining on a lock, or 0 if not locked.
      */
-    private function lockSecondsRemaining($user): int
+    private function lockSecondsRemaining(UserInterface $user): int
     {
         return max(0, (int) $user->getPreference(self::PREF_LOCKED_UNTIL, '0') - time());
     }
 
-    private function recordFailure($user): void
+    private function recordFailure(UserInterface $user): void
     {
         $failures = (int) $user->getPreference(self::PREF_FAILURES, '0') + 1;
 
@@ -387,7 +388,7 @@ JS;
         $user->setPreference(self::PREF_FAILURES, (string) $failures);
     }
 
-    private function clearFailures($user): void
+    private function clearFailures(UserInterface $user): void
     {
         $user->setPreference(self::PREF_FAILURES, '0');
         $user->setPreference(self::PREF_LOCKED_UNTIL, '0');
