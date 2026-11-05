@@ -1,4 +1,4 @@
-# 🚀 Two Factor Authentication for Webtrees
+# 🚀 Two Factor Authentication for Webtrees 2
 
 
 Add two-factor authentication to Webtrees to keep your data more secure.
